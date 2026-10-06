@@ -1,5 +1,3 @@
-// File: src/app/dashboard/page.tsx
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,6 +14,15 @@ import {
   Wrench,
 } from "lucide-react";
 
+type UserRole = "TENANT" | "OWNER" | "STAFF";
+
+type CurrentUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+};
+
 type MaintenanceOverview = {
   totalRequests: number;
   pendingRequests: number;
@@ -29,11 +36,6 @@ type AmenityUsageOverview = {
   checkedOutBookings: number;
 };
 
-type CurrentUser = {
-  userId: string;
-  role: "TENANT" | "OWNER" | "STAFF";
-};
-
 export default function DashboardPage() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [maintenance, setMaintenance] =
@@ -44,8 +46,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-
-  // File: src/app/dashboard/page.tsx
 
   async function loadDashboard(showRefreshing = false) {
     try {
@@ -74,8 +74,7 @@ export default function DashboardPage() {
       ]);
 
       const userResult = await userResponse.json();
-      const maintenanceResult =
-        await maintenanceResponse.json();
+      const maintenanceResult = await maintenanceResponse.json();
       const amenityResult = await amenityResponse.json();
 
       if (!userResponse.ok || !userResult.success) {
@@ -117,83 +116,7 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadInitialDashboard() {
-      try {
-        const [
-          userResponse,
-          maintenanceResponse,
-          amenityResponse,
-        ] = await Promise.all([
-          fetch("/api/auth/me", {
-            cache: "no-store",
-          }),
-          fetch("/api/dashboard/maintenance", {
-            cache: "no-store",
-          }),
-          fetch("/api/dashboard/amenities", {
-            cache: "no-store",
-          }),
-        ]);
-
-        const userResult = await userResponse.json();
-        const maintenanceResult =
-          await maintenanceResponse.json();
-        const amenityResult = await amenityResponse.json();
-
-        if (!userResponse.ok || !userResult.success) {
-          throw new Error(
-            userResult.message || "Authentication required."
-          );
-        }
-
-        if (
-          !maintenanceResponse.ok ||
-          !maintenanceResult.success
-        ) {
-          throw new Error(
-            maintenanceResult.message ||
-              "Unable to load maintenance overview."
-          );
-        }
-
-        if (!amenityResponse.ok || !amenityResult.success) {
-          throw new Error(
-            amenityResult.message ||
-              "Unable to load amenity overview."
-          );
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        setUser(userResult.data);
-        setMaintenance(maintenanceResult.data);
-        setAmenityUsage(amenityResult.data);
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        setError(
-          error instanceof Error
-            ? error.message
-            : "Unable to load dashboard."
-        );
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadInitialDashboard();
-
-    return () => {
-      cancelled = true;
-    };
+    void loadDashboard();
   }, []);
 
   const maintenanceCompletionRate = useMemo(() => {
@@ -211,6 +134,13 @@ export default function DashboardPage() {
   const activeMaintenance =
     (maintenance?.pendingRequests ?? 0) +
     (maintenance?.inProgressRequests ?? 0);
+
+  const firstName =
+    user?.name?.trim().split(/\s+/)[0] || "there";
+
+  const roleDescription = getRoleDescription(user?.role);
+
+  const quickActions = getQuickActions(user?.role);
 
   if (loading) {
     return (
@@ -275,29 +205,34 @@ export default function DashboardPage() {
   return (
     <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-8">
-        {/* Page heading */}
+        {/* Welcome */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600">
                 <span className="h-1.5 w-1.5 rounded-full bg-zinc-950" />
-                Property operations
+                {user?.role || "Account"}
               </div>
 
               <h1 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">
-                Good to see you back.
+                Welcome back, {firstName}.
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 sm:text-base">
-                Monitor maintenance activity and amenity usage
-                from one centralized workspace.
+                {roleDescription}
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                {user?.role}
-              </span>
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  Signed in as
+                </p>
+
+                <p className="mt-0.5 text-sm font-semibold text-zinc-900">
+                  {user?.name}
+                </p>
+              </div>
 
               <button
                 type="button"
@@ -342,7 +277,7 @@ export default function DashboardPage() {
             <MetricCard
               title="Total requests"
               value={maintenance?.totalRequests ?? 0}
-              description="All recorded requests"
+              description="All accessible requests"
               icon={ClipboardList}
             />
 
@@ -369,7 +304,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* Maintenance status + quick actions */}
+        {/* Progress + quick actions */}
         <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="flex items-start justify-between gap-4">
@@ -379,7 +314,7 @@ export default function DashboardPage() {
                 </p>
 
                 <p className="mt-1 text-sm text-zinc-500">
-                  Current completion rate across maintenance
+                  Completion status across accessible maintenance
                   requests.
                 </p>
               </div>
@@ -428,31 +363,22 @@ export default function DashboardPage() {
             </p>
 
             <h2 className="mt-2 text-lg font-semibold">
-              Manage your property operations
+              Your workspace
             </h2>
 
             <p className="mt-2 text-sm leading-6 text-zinc-400">
-              Jump directly into the workflows you use most.
+              Access the workflows available to your role.
             </p>
 
             <div className="mt-6 grid gap-2">
-              <QuickAction
-                href="/dashboard/maintenance"
-                icon={Wrench}
-                label="Manage maintenance"
-              />
-
-              <QuickAction
-                href="/dashboard/amenities"
-                icon={CalendarDays}
-                label="View amenities"
-              />
-
-              <QuickAction
-                href="/dashboard/properties"
-                icon={Building2}
-                label="View properties"
-              />
+              {quickActions.map((action) => (
+                <QuickAction
+                  key={action.href}
+                  href={action.href}
+                  icon={action.icon}
+                  label={action.label}
+                />
+              ))}
             </div>
           </div>
         </section>
@@ -483,14 +409,14 @@ export default function DashboardPage() {
             <MetricCard
               title="Total bookings"
               value={amenityUsage?.totalBookings ?? 0}
-              description="All amenity bookings"
+              description="Accessible amenity bookings"
               icon={CalendarDays}
             />
 
             <MetricCard
               title="Checked in"
               value={amenityUsage?.checkedInBookings ?? 0}
-              description="Currently checked in"
+              description="Recorded check-ins"
               icon={CheckCircle2}
             />
 
@@ -503,7 +429,7 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        {/* Operational summary */}
+        {/* Summary */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-4">
@@ -535,6 +461,57 @@ export default function DashboardPage() {
       </div>
     </div>
   );
+}
+
+function getRoleDescription(role?: UserRole) {
+  switch (role) {
+    case "OWNER":
+      return "Monitor your property operations, maintenance activity, amenities, and bookings from one centralized workspace.";
+
+    case "STAFF":
+      return "Manage maintenance workflows and monitor amenity activity from one centralized workspace.";
+
+    case "TENANT":
+      return "Track maintenance activity and manage your amenity bookings from one centralized workspace.";
+
+    default:
+      return "Monitor maintenance activity and amenity usage from one centralized workspace.";
+  }
+}
+
+function getQuickActions(role?: UserRole) {
+  const actions: Array<{
+    href: string;
+    icon: typeof Wrench;
+    label: string;
+  }> = [
+    {
+      href: "/dashboard/maintenance",
+      icon: Wrench,
+      label: "Manage maintenance",
+    },
+    {
+      href: "/dashboard/amenities",
+      icon: CalendarDays,
+      label: "View amenities",
+    },
+  ];
+
+  if (role === "OWNER") {
+    actions.push({
+      href: "/dashboard/properties",
+      icon: Building2,
+      label: "Manage properties",
+    });
+  }
+
+  actions.push({
+    href: "/dashboard/bookings",
+    icon: ClipboardList,
+    label: "View bookings",
+  });
+
+  return actions;
 }
 
 function MetricCard({

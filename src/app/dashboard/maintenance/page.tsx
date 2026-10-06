@@ -51,20 +51,22 @@ type MaintenanceRequest = {
   resolutionDate: string | null;
 };
 
+type CurrentUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+};
+
 type Feedback = {
   type: "success" | "error";
   message: string;
 } | null;
 
-type CurrentUser = {
-  userId: string;
-  role: UserRole;
-};
-
 export default function MaintenancePage() {
-  const [requests, setRequests] = useState<MaintenanceRequest[]>(
-    []
-  );
+  const [requests, setRequests] = useState<MaintenanceRequest[]>([]);
+  const [currentUser, setCurrentUser] =
+    useState<CurrentUser | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -72,50 +74,26 @@ export default function MaintenancePage() {
   const [search, setSearch] = useState("");
   const [feedback, setFeedback] = useState<Feedback>(null);
 
-  const [currentUser, setCurrentUser] =
-    useState<CurrentUser | null>(null);
-
   const [createOpen, setCreateOpen] = useState(false);
   const [propertyId, setPropertyId] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
   const [formError, setFormError] = useState("");
 
-  const [statusLoadingId, setStatusLoadingId] = useState<string | null>(
-    null
-  );
+  const [statusLoadingId, setStatusLoadingId] =
+    useState<string | null>(null);
 
   const [completionRequest, setCompletionRequest] =
     useState<MaintenanceRequest | null>(null);
 
-  const [completionLoading, setCompletionLoading] = useState(false);
+  const [completionLoading, setCompletionLoading] =
+    useState(false);
 
   const canUpdateStatus =
     currentUser?.role === "OWNER" ||
     currentUser?.role === "STAFF";
 
-
-  // async function loadCurrentUser() {
-  //   try {
-  //     const response = await fetch("/api/auth/me", {
-  //       cache: "no-store",
-  //     });
-
-  //     const result = await response.json();
-
-  //     if (!response.ok || !result.success) {
-  //       return;
-  //     }
-
-  //     setCurrentUser(result.data);
-  //   } catch {
-  //     // The maintenance API remains the source of truth.
-  //     // Status controls simply remain hidden if the user
-  //     // information cannot be loaded.
-  //   }
-  // }
-
-  async function loadRequests(showRefreshing = false) {
+  async function loadData(showRefreshing = false) {
     try {
       if (showRefreshing) {
         setRefreshing(true);
@@ -125,24 +103,42 @@ export default function MaintenancePage() {
 
       setError("");
 
-      const response = await fetch("/api/maintenance-requests", {
-        cache: "no-store",
-      });
+      const [userResponse, requestsResponse] =
+        await Promise.all([
+          fetch("/api/auth/me", {
+            cache: "no-store",
+          }),
+          fetch("/api/maintenance-requests", {
+            cache: "no-store",
+          }),
+        ]);
 
-      const result = await response.json();
+      const userResult = await userResponse.json();
+      const requestsResult = await requestsResponse.json();
 
-      if (!response.ok || !result.success) {
+      if (!userResponse.ok || !userResult.success) {
         throw new Error(
-          result.message || "Unable to load maintenance requests."
+          userResult.message || "Authentication required."
         );
       }
 
-      setRequests(result.data);
+      if (
+        !requestsResponse.ok ||
+        !requestsResult.success
+      ) {
+        throw new Error(
+          requestsResult.message ||
+            "Unable to load maintenance requests."
+        );
+      }
+
+      setCurrentUser(userResult.data);
+      setRequests(requestsResult.data);
     } catch (error) {
       setError(
         error instanceof Error
           ? error.message
-          : "Unable to load maintenance requests."
+          : "Unable to load maintenance workspace."
       );
     } finally {
       setLoading(false);
@@ -151,64 +147,7 @@ export default function MaintenancePage() {
   }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadInitialData() {
-      const [userResult, requestsResult] = await Promise.allSettled([
-        fetch("/api/auth/me", {
-          cache: "no-store",
-        }),
-        fetch("/api/maintenance-requests", {
-          cache: "no-store",
-        }),
-      ]);
-
-      if (cancelled) {
-        return;
-      }
-
-      if (userResult.status === "fulfilled") {
-        try {
-          const result = await userResult.value.json();
-
-          if (userResult.value.ok && result.success) {
-            setCurrentUser(result.data);
-          }
-        } catch {
-          // Status controls remain hidden if user information cannot be loaded.
-        }
-      }
-
-      if (requestsResult.status === "fulfilled") {
-        try {
-          const result = await requestsResult.value.json();
-
-          if (!requestsResult.value.ok || !result.success) {
-            throw new Error(
-              result.message || "Unable to load maintenance requests."
-            );
-          }
-
-          setRequests(result.data);
-        } catch (error) {
-          setError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load maintenance requests."
-          );
-        }
-      } else {
-        setError("Unable to load maintenance requests.");
-      }
-
-      setLoading(false);
-    }
-
-    void loadInitialData();
-
-    return () => {
-      cancelled = true;
-    };
+    void loadData();
   }, []);
 
   const filteredRequests = useMemo(() => {
@@ -233,8 +172,8 @@ export default function MaintenancePage() {
     });
   }, [requests, search]);
 
-  const summary = useMemo(() => {
-    return {
+  const summary = useMemo(
+    () => ({
       total: requests.length,
       pending: requests.filter(
         (request) => request.status === "PENDING"
@@ -245,8 +184,9 @@ export default function MaintenancePage() {
       completed: requests.filter(
         (request) => request.status === "COMPLETED"
       ).length,
-    };
-  }, [requests]);
+    }),
+    [requests]
+  );
 
   function resetCreateForm() {
     setPropertyId("");
@@ -319,7 +259,7 @@ export default function MaintenancePage() {
       resetCreateForm();
       setCreateOpen(false);
 
-      await loadRequests();
+      await loadData(true);
     } catch (error) {
       setFormError(
         error instanceof Error
@@ -373,7 +313,7 @@ export default function MaintenancePage() {
             : "Maintenance request marked as completed.",
       });
 
-      await loadRequests();
+      await loadData(true);
     } catch (error) {
       setFeedback({
         type: "error",
@@ -391,7 +331,9 @@ export default function MaintenancePage() {
     void updateMaintenanceStatus(request, "IN_PROGRESS");
   }
 
-  function handleRequestCompletion(request: MaintenanceRequest) {
+  function handleRequestCompletion(
+    request: MaintenanceRequest
+  ) {
     if (statusLoadingId) {
       return;
     }
@@ -442,7 +384,6 @@ export default function MaintenancePage() {
   return (
     <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        {/* Header */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -456,10 +397,15 @@ export default function MaintenancePage() {
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 sm:text-base">
-                Track maintenance requests and monitor
-                their current status from one centralized
-                workspace.
+                Track maintenance requests and monitor their
+                current status from one centralized workspace.
               </p>
+
+              {currentUser && (
+                <p className="mt-3 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  {currentUser.name} · {currentUser.role}
+                </p>
+              )}
             </div>
 
             <Button
@@ -477,7 +423,6 @@ export default function MaintenancePage() {
           </div>
         </section>
 
-        {/* Feedback */}
         {feedback && (
           <div
             role="status"
@@ -499,12 +444,11 @@ export default function MaintenancePage() {
           </div>
         )}
 
-        {/* Summary */}
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             label="Total requests"
             value={summary.total}
-            description="All maintenance requests"
+            description="Accessible maintenance requests"
             icon={ClipboardList}
           />
 
@@ -531,7 +475,6 @@ export default function MaintenancePage() {
           />
         </section>
 
-        {/* Toolbar */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
@@ -549,7 +492,7 @@ export default function MaintenancePage() {
 
             <button
               type="button"
-              onClick={() => void loadRequests(true)}
+              onClick={() => void loadData(true)}
               disabled={refreshing}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -563,22 +506,19 @@ export default function MaintenancePage() {
           </div>
         </section>
 
-        {/* Requests */}
         <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-200 px-5 py-4 sm:px-6">
-            <div>
-              <h2 className="text-sm font-semibold text-zinc-950">
-                Maintenance requests
-              </h2>
+            <h2 className="text-sm font-semibold text-zinc-950">
+              Maintenance requests
+            </h2>
 
-              <p className="mt-1 text-xs text-zinc-500">
-                {filteredRequests.length}{" "}
-                {filteredRequests.length === 1
-                  ? "request"
-                  : "requests"}{" "}
-                displayed
-              </p>
-            </div>
+            <p className="mt-1 text-xs text-zinc-500">
+              {filteredRequests.length}{" "}
+              {filteredRequests.length === 1
+                ? "request"
+                : "requests"}{" "}
+              displayed
+            </p>
           </div>
 
           {error ? (
@@ -598,7 +538,7 @@ export default function MaintenancePage() {
 
                     <button
                       type="button"
-                      onClick={() => void loadRequests()}
+                      onClick={() => void loadData()}
                       className="mt-4 inline-flex items-center gap-2 rounded-lg bg-zinc-950 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-800"
                     >
                       <RefreshCw className="h-3.5 w-3.5" />
@@ -628,7 +568,6 @@ export default function MaintenancePage() {
             </div>
           ) : (
             <>
-              {/* Desktop table */}
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full text-left">
                   <thead>
@@ -636,15 +575,12 @@ export default function MaintenancePage() {
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
                         Issue
                       </th>
-
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
                         Property
                       </th>
-
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
                         Created
                       </th>
-
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
                         Status
                       </th>
@@ -730,13 +666,9 @@ export default function MaintenancePage() {
                 </table>
               </div>
 
-              {/* Mobile cards */}
               <div className="divide-y divide-zinc-100 md:hidden">
                 {filteredRequests.map((request) => (
-                  <div
-                    key={request.id}
-                    className="p-5"
-                  >
+                  <div key={request.id} className="p-5">
                     <div className="flex items-start gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100">
                         <Wrench className="h-4 w-4 text-zinc-600" />
@@ -809,7 +741,6 @@ export default function MaintenancePage() {
         </section>
       </div>
 
-      {/* Create Maintenance Request Dialog */}
       <Dialog
         open={createOpen}
         onOpenChange={handleCreateDialogChange}
@@ -831,7 +762,6 @@ export default function MaintenancePage() {
               {formError && (
                 <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-
                   <p>{formError}</p>
                 </div>
               )}
@@ -885,7 +815,9 @@ export default function MaintenancePage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => handleCreateDialogChange(false)}
+                onClick={() =>
+                  handleCreateDialogChange(false)
+                }
                 disabled={createLoading}
               >
                 Cancel
@@ -908,7 +840,6 @@ export default function MaintenancePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Completion Confirmation */}
       <AlertDialog
         open={Boolean(completionRequest)}
         onOpenChange={(open) => {
@@ -942,9 +873,7 @@ export default function MaintenancePage() {
           )}
 
           <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={completionLoading}
-            >
+            <AlertDialogCancel disabled={completionLoading}>
               Cancel
             </AlertDialogCancel>
 
@@ -1129,4 +1058,4 @@ function formatDate(value: string) {
     month: "short",
     year: "numeric",
   }).format(new Date(value));
-} 
+}

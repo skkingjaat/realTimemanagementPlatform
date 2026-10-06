@@ -1,5 +1,3 @@
-// File: src/components/dashboard/mobile-navigation.tsx
-
 "use client";
 
 import Link from "next/link";
@@ -9,41 +7,60 @@ import {
   CalendarDays,
   ClipboardList,
   Home,
-  Settings,
   Wrench,
   X,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+
+type UserRole = "TENANT" | "OWNER" | "STAFF";
+
+type CurrentUser = {
+  name: string;
+  role: UserRole;
+};
 
 type MobileNavigationProps = {
   open: boolean;
   onClose: () => void;
 };
 
-const navigationItems = [
+type NavigationItem = {
+  label: string;
+  href: string;
+  icon: typeof Home;
+  roles: UserRole[];
+};
+
+const navigationItems: NavigationItem[] = [
   {
     label: "Overview",
     href: "/dashboard",
     icon: Home,
+    roles: ["TENANT", "OWNER", "STAFF"],
   },
   {
     label: "Properties",
     href: "/dashboard/properties",
     icon: Building2,
+    roles: ["OWNER"],
   },
   {
     label: "Maintenance",
     href: "/dashboard/maintenance",
     icon: Wrench,
+    roles: ["TENANT", "OWNER", "STAFF"],
   },
   {
     label: "Amenities",
     href: "/dashboard/amenities",
     icon: ClipboardList,
+    roles: ["TENANT", "OWNER", "STAFF"],
   },
   {
     label: "Bookings",
     href: "/dashboard/bookings",
     icon: CalendarDays,
+    roles: ["TENANT", "OWNER", "STAFF"],
   },
 ];
 
@@ -52,10 +69,45 @@ export function MobileNavigation({
   onClose,
 }: MobileNavigationProps) {
   const pathname = usePathname();
+  const [user, setUser] = useState<CurrentUser | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadUser() {
+      try {
+        const response = await fetch("/api/auth/me", {
+          cache: "no-store",
+        });
+
+        const result = await response.json();
+
+        if (!cancelled && response.ok && result.success) {
+          setUser(result.data);
+        }
+      } catch {
+        // Authentication is handled by the protected APIs.
+      }
+    }
+
+    void loadUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   if (!open) {
     return null;
   }
+
+  const visibleItems = navigationItems.filter((item) =>
+    user ? item.roles.includes(user.role) : true
+  );
 
   return (
     <div className="fixed inset-0 z-50 lg:hidden">
@@ -103,7 +155,7 @@ export function MobileNavigation({
             Workspace
           </p>
 
-          {navigationItems.map((item) => {
+          {visibleItems.map((item) => {
             const Icon = item.icon;
 
             const isActive =
@@ -130,16 +182,16 @@ export function MobileNavigation({
           })}
         </nav>
 
-        <div className="border-t border-zinc-200 p-3">
-          <Link
-            href="/dashboard/settings"
-            onClick={onClose}
-            className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950"
-          >
-            <Settings className="h-4.5 w-4.5 text-zinc-500" />
+        <div className="border-t border-zinc-200 p-4">
+          <div className="rounded-xl bg-zinc-50 px-3 py-3">
+            <p className="truncate text-sm font-semibold text-zinc-950">
+              {user?.name || "Loading..."}
+            </p>
 
-            <span>Settings</span>
-          </Link>
+            <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              {user?.role || "Account"}
+            </p>
+          </div>
         </div>
       </aside>
     </div>
