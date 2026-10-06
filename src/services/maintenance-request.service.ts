@@ -7,12 +7,17 @@ import type {
   UpdateMaintenanceStatusInput,
 } from "@/lib/validations/maintenance-request";
 
+type MaintenanceUserRole = "TENANT" | "OWNER" | "STAFF";
+
 export async function createMaintenanceRequest(
   input: CreateMaintenanceRequestInput
 ) {
   const property = await prisma.property.findUnique({
     where: {
       id: input.propertyId,
+    },
+    select: {
+      id: true,
     },
   });
 
@@ -23,7 +28,7 @@ export async function createMaintenanceRequest(
   const maintenanceRequest =
     await prisma.maintenanceRequest.create({
       data: {
-        propertyId: input.propertyId,
+        propertyId: property.id,
         issueDescription: input.issueDescription,
       },
     });
@@ -31,9 +36,26 @@ export async function createMaintenanceRequest(
   return maintenanceRequest;
 }
 
-export async function getMaintenanceRequests() {
+export async function getMaintenanceRequests(
+  role: MaintenanceUserRole,
+  userId: string
+) {
+  const where =
+    role === "OWNER"
+      ? {
+          property: {
+            ownerId: userId,
+          },
+        }
+      : role === "STAFF"
+        ? {}
+        : {
+            id: "__NO_TENANT_REQUEST_ACCESS__",
+          };
+
   const maintenanceRequests =
     await prisma.maintenanceRequest.findMany({
+      where,
       orderBy: {
         createdAt: "desc",
       },
@@ -43,13 +65,29 @@ export async function getMaintenanceRequests() {
 }
 
 export async function getMaintenanceRequestById(
-  maintenanceRequestId: string
+  maintenanceRequestId: string,
+  role: MaintenanceUserRole,
+  userId: string
 ) {
+  const where =
+    role === "OWNER"
+      ? {
+          id: maintenanceRequestId,
+          property: {
+            ownerId: userId,
+          },
+        }
+      : role === "STAFF"
+        ? {
+            id: maintenanceRequestId,
+          }
+        : {
+            id: "__NO_TENANT_REQUEST_ACCESS__",
+          };
+
   const maintenanceRequest =
-    await prisma.maintenanceRequest.findUnique({
-      where: {
-        id: maintenanceRequestId,
-      },
+    await prisma.maintenanceRequest.findFirst({
+      where,
     });
 
   return maintenanceRequest;
@@ -57,13 +95,25 @@ export async function getMaintenanceRequestById(
 
 export async function updateMaintenanceStatus(
   maintenanceRequestId: string,
-  input: UpdateMaintenanceStatusInput
+  input: UpdateMaintenanceStatusInput,
+  role: "OWNER" | "STAFF",
+  userId: string
 ) {
+  const where =
+    role === "OWNER"
+      ? {
+          id: maintenanceRequestId,
+          property: {
+            ownerId: userId,
+          },
+        }
+      : {
+          id: maintenanceRequestId,
+        };
+
   const maintenanceRequest =
-    await prisma.maintenanceRequest.findUnique({
-      where: {
-        id: maintenanceRequestId,
-      },
+    await prisma.maintenanceRequest.findFirst({
+      where,
     });
 
   if (!maintenanceRequest) {
@@ -92,7 +142,7 @@ export async function updateMaintenanceStatus(
   const updatedMaintenanceRequest =
     await prisma.maintenanceRequest.update({
       where: {
-        id: maintenanceRequestId,
+        id: maintenanceRequest.id,
       },
       data: {
         status: nextStatus,
@@ -109,33 +159,50 @@ export async function updateMaintenanceStatus(
   };
 }
 
+export async function getMaintenanceOverview(
+  role: MaintenanceUserRole,
+  userId: string
+) {
+  const where =
+    role === "OWNER"
+      ? {
+          property: {
+            ownerId: userId,
+          },
+        }
+      : role === "STAFF"
+        ? {}
+        : {
+            id: "__NO_TENANT_REQUEST_ACCESS__",
+          };
 
-
-// File: src/services/maintenance-request.service.ts
-
-export async function getMaintenanceOverview() {
   const [
     totalRequests,
     pendingRequests,
     inProgressRequests,
     completedRequests,
   ] = await Promise.all([
-    prisma.maintenanceRequest.count(),
+    prisma.maintenanceRequest.count({
+      where,
+    }),
 
     prisma.maintenanceRequest.count({
       where: {
+        ...where,
         status: "PENDING",
       },
     }),
 
     prisma.maintenanceRequest.count({
       where: {
+        ...where,
         status: "IN_PROGRESS",
       },
     }),
 
     prisma.maintenanceRequest.count({
       where: {
+        ...where,
         status: "COMPLETED",
       },
     }),

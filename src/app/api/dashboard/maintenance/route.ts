@@ -19,23 +19,31 @@ export async function GET() {
             );
         }
 
-        const overview = await getMaintenanceOverview();
+        const overview = await getMaintenanceOverview(
+            currentUser.role,
+            currentUser.id
+        );
 
         return NextResponse.json(
             {
                 success: true,
-                message: "Maintenance overview retrieved successfully.",
+                message:
+                    "Maintenance overview retrieved successfully.",
                 data: overview,
             },
             { status: 200 }
         );
     } catch (error) {
-        console.error("Get maintenance overview error:", error);
+        console.error(
+            "Get maintenance overview error:",
+            error
+        );
 
         return NextResponse.json(
             {
                 success: false,
-                message: "Unable to retrieve maintenance overview.",
+                message:
+                    "Unable to retrieve maintenance overview.",
             },
             { status: 500 }
         );

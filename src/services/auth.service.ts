@@ -14,6 +14,9 @@ export async function registerUser(input: RegisterInput) {
         where: {
             email: input.email,
         },
+        select: {
+            id: true,
+        },
     });
 
     if (existingUser) {

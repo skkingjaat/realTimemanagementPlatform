@@ -10,10 +10,20 @@ if (!jwtSecret) {
 
 const secret = new TextEncoder().encode(jwtSecret);
 
+export type AuthRole = "TENANT" | "OWNER" | "STAFF";
+
 export type AuthTokenPayload = {
     userId: string;
-    role: "TENANT" | "OWNER" | "STAFF";
+    role: AuthRole;
 };
+
+function isValidRole(value: unknown): value is AuthRole {
+    return (
+        value === "TENANT" ||
+        value === "OWNER" ||
+        value === "STAFF"
+    );
+}
 
 export async function createAuthToken(payload: AuthTokenPayload) {
     return new SignJWT({
@@ -21,6 +31,7 @@ export async function createAuthToken(payload: AuthTokenPayload) {
     })
         .setProtectedHeader({
             alg: "HS256",
+            typ: "JWT",
         })
         .setSubject(payload.userId)
         .setIssuedAt()
@@ -28,14 +39,15 @@ export async function createAuthToken(payload: AuthTokenPayload) {
         .sign(secret);
 }
 
-export async function verifyAuthToken(token: string) {
-    const { payload } = await jwtVerify(token, secret);
+export async function verifyAuthToken(token: string): Promise<AuthTokenPayload> {
+    const { payload } = await jwtVerify(token, secret, {
+        algorithms: ["HS256"],
+    });
 
     if (
         typeof payload.sub !== "string" ||
-        (payload.role !== "TENANT" &&
-            payload.role !== "OWNER" &&
-            payload.role !== "STAFF")
+        !payload.sub.trim() ||
+        !isValidRole(payload.role)
     ) {
         throw new Error("Invalid authentication token.");
     }
@@ -43,5 +55,5 @@ export async function verifyAuthToken(token: string) {
     return {
         userId: payload.sub,
         role: payload.role,
-    } as AuthTokenPayload;
+    };
 }

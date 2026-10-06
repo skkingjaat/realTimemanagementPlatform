@@ -5,7 +5,10 @@ import { ZodError } from "zod";
 
 import { getCurrentUser } from "@/lib/current-user";
 import { createAmenitySchema } from "@/lib/validations/amenity";
-import { createAmenity, getAmenities } from "@/services/amenity.service";
+import {
+  createAmenity,
+  getAmenities,
+} from "@/services/amenity.service";
 
 export async function POST(request: Request) {
   try {
@@ -40,9 +43,13 @@ export async function POST(request: Request) {
     const validatedData =
       createAmenitySchema.parse(body);
 
-    const amenity = await createAmenity(validatedData);
+    const result = await createAmenity(
+      validatedData,
+      currentUser.role,
+      currentUser.id
+    );
 
-    if (!amenity) {
+    if (result.type === "NOT_FOUND") {
       return NextResponse.json(
         {
           success: false,
@@ -52,11 +59,22 @@ export async function POST(request: Request) {
       );
     }
 
+    if (result.type === "FORBIDDEN") {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "You do not have permission to add an amenity to this property.",
+        },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json(
       {
         success: true,
         message: "Amenity created successfully.",
-        data: amenity,
+        data: result.data,
       },
       { status: 201 }
     );
