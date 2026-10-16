@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
+type Role = "TENANT" | "OWNER" | "STAFF";
+
 type AmenityAvailabilityStatus =
   | "AVAILABLE"
   | "UNAVAILABLE";
@@ -35,17 +37,31 @@ type Amenity = {
   updatedAt: string;
 };
 
+type CurrentUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+};
+
 type Feedback = {
   type: "success" | "error";
   message: string;
 };
 
 export default function AmenitiesPage() {
-  const [amenities, setAmenities] = useState<Amenity[]>([]);
+  const [currentUser, setCurrentUser] =
+    useState<CurrentUser | null>(null);
+
+  const [amenities, setAmenities] = useState<Amenity[]>(
+    []
+  );
+
   const [search, setSearch] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
   const [error, setError] = useState("");
 
   const [feedback, setFeedback] =
@@ -54,11 +70,23 @@ export default function AmenitiesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [propertyId, setPropertyId] = useState("");
   const [name, setName] = useState("");
+
   const [createLoading, setCreateLoading] =
     useState(false);
+
+  const [updatingId, setUpdatingId] = useState<
+    string | null
+  >(null);
+
   const [formError, setFormError] = useState("");
 
-  async function loadAmenities(showRefreshing = false) {
+  const canManage =
+    currentUser?.role === "OWNER" ||
+    currentUser?.role === "STAFF";
+
+  async function loadAmenities(
+    showRefreshing = false
+  ) {
     try {
       if (showRefreshing) {
         setRefreshing(true);
@@ -68,19 +96,42 @@ export default function AmenitiesPage() {
 
       setError("");
 
-      const response = await fetch("/api/amenities", {
-        cache: "no-store",
-      });
+      const [userResponse, amenitiesResponse] =
+        await Promise.all([
+          fetch("/api/auth/me", {
+            cache: "no-store",
+          }),
+          fetch("/api/amenities", {
+            cache: "no-store",
+          }),
+        ]);
 
-      const result = await response.json();
+      const userResult = await userResponse.json();
+      const amenitiesResult =
+        await amenitiesResponse.json();
 
-      if (!response.ok || !result.success) {
+      if (
+        !userResponse.ok ||
+        !userResult.success
+      ) {
         throw new Error(
-          result.message || "Unable to load amenities."
+          userResult.message ||
+            "Unable to retrieve your account."
         );
       }
 
-      setAmenities(result.data);
+      if (
+        !amenitiesResponse.ok ||
+        !amenitiesResult.success
+      ) {
+        throw new Error(
+          amenitiesResult.message ||
+            "Unable to load amenities."
+        );
+      }
+
+      setCurrentUser(userResult.data);
+      setAmenities(amenitiesResult.data);
     } catch (error) {
       setError(
         error instanceof Error
@@ -93,47 +144,8 @@ export default function AmenitiesPage() {
     }
   }
 
-  // src/app/dashboard/amenities/page.tsx
-
   useEffect(() => {
-    let cancelled = false;
-
-    async function fetchInitialAmenities() {
-      try {
-        const response = await fetch("/api/amenities", {
-          cache: "no-store",
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          throw new Error(
-            result.message || "Unable to load amenities."
-          );
-        }
-
-        if (!cancelled) {
-          setAmenities(result.data);
-          setError("");
-          setLoading(false);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setError(
-            error instanceof Error
-              ? error.message
-              : "Unable to load amenities."
-          );
-          setLoading(false);
-        }
-      }
-    }
-
-    void fetchInitialAmenities();
-
-    return () => {
-      cancelled = true;
-    };
+    void loadAmenities();
   }, []);
 
   const filteredAmenities = useMemo(() => {
@@ -160,8 +172,8 @@ export default function AmenitiesPage() {
     });
   }, [amenities, search]);
 
-  const summary = useMemo(() => {
-    return {
+  const summary = useMemo(
+    () => ({
       total: amenities.length,
       available: amenities.filter(
         (amenity) =>
@@ -171,8 +183,9 @@ export default function AmenitiesPage() {
         (amenity) =>
           amenity.availabilityStatus === "UNAVAILABLE"
       ).length,
-    };
-  }, [amenities]);
+    }),
+    [amenities]
+  );
 
   function resetCreateForm() {
     setPropertyId("");
@@ -241,7 +254,8 @@ export default function AmenitiesPage() {
 
       if (!response.ok || !result.success) {
         throw new Error(
-          result.message || "Unable to create amenity."
+          result.message ||
+            "Unable to create amenity."
         );
       }
 
@@ -262,6 +276,79 @@ export default function AmenitiesPage() {
       );
     } finally {
       setCreateLoading(false);
+    }
+  }
+
+  async function toggleAvailability(
+    amenity: Amenity
+  ) {
+    if (!canManage) {
+      return;
+    }
+
+    setFeedback(null);
+    setUpdatingId(amenity.id);
+
+    const nextStatus =
+      amenity.availabilityStatus === "AVAILABLE"
+        ? "UNAVAILABLE"
+        : "AVAILABLE";
+
+    try {
+      const response = await fetch(
+        `/api/amenities/${amenity.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            availabilityStatus: nextStatus,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message ||
+            "Unable to update amenity availability."
+        );
+      }
+
+      setAmenities((current) =>
+        current.map((item) =>
+          item.id === amenity.id
+            ? {
+                ...item,
+                availabilityStatus: nextStatus,
+                updatedAt:
+                  result.data?.updatedAt ??
+                  item.updatedAt,
+              }
+            : item
+        )
+      );
+
+      setFeedback({
+        type: "success",
+        message: `${amenity.name} is now ${
+          nextStatus === "AVAILABLE"
+            ? "available"
+            : "unavailable"
+        }.`,
+      });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to update amenity availability.",
+      });
+    } finally {
+      setUpdatingId(null);
     }
   }
 
@@ -288,7 +375,6 @@ export default function AmenitiesPage() {
   return (
     <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        {/* Header */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -302,28 +388,43 @@ export default function AmenitiesPage() {
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 sm:text-base">
-                Manage property amenities and monitor their
-                current availability from one centralized
-                workspace.
+                {currentUser?.role === "TENANT"
+                  ? "View available property amenities and their current availability."
+                  : "Manage property amenities and control their current availability."}
               </p>
+
+              {currentUser && (
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                  <span className="font-medium text-zinc-700">
+                    {currentUser.name}
+                  </span>
+
+                  <span>•</span>
+
+                  <span>
+                    {formatRole(currentUser.role)}
+                  </span>
+                </div>
+              )}
             </div>
 
-            <Button
-              type="button"
-              onClick={() => {
-                setFeedback(null);
-                setFormError("");
-                setCreateOpen(true);
-              }}
-              className="w-full sm:w-auto"
-            >
-              <Plus className="h-4 w-4" />
-              New Amenity
-            </Button>
+            {canManage && (
+              <Button
+                type="button"
+                onClick={() => {
+                  setFeedback(null);
+                  setFormError("");
+                  setCreateOpen(true);
+                }}
+                className="w-full sm:w-auto"
+              >
+                <Plus className="h-4 w-4" />
+                New Amenity
+              </Button>
+            )}
           </div>
         </section>
 
-        {/* Feedback */}
         {feedback && (
           <div
             role="status"
@@ -345,12 +446,11 @@ export default function AmenitiesPage() {
           </div>
         )}
 
-        {/* Summary */}
         <section className="grid gap-4 sm:grid-cols-3">
           <SummaryCard
             label="Total amenities"
             value={summary.total}
-            description="All registered amenities"
+            description="Amenities in your current scope"
             icon={Waves}
           />
 
@@ -370,7 +470,6 @@ export default function AmenitiesPage() {
           />
         </section>
 
-        {/* Toolbar */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
@@ -404,7 +503,6 @@ export default function AmenitiesPage() {
           </div>
         </section>
 
-        {/* Amenities */}
         <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-200 px-5 py-4 sm:px-6">
             <h2 className="text-sm font-semibold text-zinc-950">
@@ -464,12 +562,13 @@ export default function AmenitiesPage() {
               <p className="mt-1 max-w-sm text-sm leading-6 text-zinc-500">
                 {search
                   ? "Try changing your search terms."
-                  : "Amenities will appear here once they are created."}
+                  : canManage
+                    ? "Create an amenity to start managing your property facilities."
+                    : "No amenities are currently available in your view."}
               </p>
             </div>
           ) : (
             <>
-              {/* Desktop table */}
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full text-left">
                   <thead>
@@ -489,6 +588,12 @@ export default function AmenitiesPage() {
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
                         Availability
                       </th>
+
+                      {canManage && (
+                        <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                          Action
+                        </th>
+                      )}
                     </tr>
                   </thead>
 
@@ -511,8 +616,7 @@ export default function AmenitiesPage() {
                                 </p>
 
                                 <p className="mt-1 text-xs text-zinc-400">
-                                  Amenity ID:{" "}
-                                  {amenity.id}
+                                  ID: {amenity.id}
                                 </p>
                               </div>
                             </div>
@@ -524,8 +628,7 @@ export default function AmenitiesPage() {
                             </p>
 
                             <p className="mt-1 text-xs text-zinc-400">
-                              ID:{" "}
-                              {amenity.propertyId}
+                              ID: {amenity.propertyId}
                             </p>
                           </td>
 
@@ -542,6 +645,34 @@ export default function AmenitiesPage() {
                               }
                             />
                           </td>
+
+                          {canManage && (
+                            <td className="px-6 py-5 text-right">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void toggleAvailability(
+                                    amenity
+                                  )
+                                }
+                                disabled={
+                                  updatingId ===
+                                  amenity.id
+                                }
+                                className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {updatingId ===
+                                  amenity.id && (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                )}
+
+                                {amenity.availabilityStatus ===
+                                "AVAILABLE"
+                                  ? "Mark unavailable"
+                                  : "Mark available"}
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       )
                     )}
@@ -549,7 +680,6 @@ export default function AmenitiesPage() {
                 </table>
               </div>
 
-              {/* Mobile cards */}
               <div className="divide-y divide-zinc-100 md:hidden">
                 {filteredAmenities.map(
                   (amenity) => (
@@ -599,6 +729,32 @@ export default function AmenitiesPage() {
                               </span>
                             </p>
                           </div>
+
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void toggleAvailability(
+                                  amenity
+                                )
+                              }
+                              disabled={
+                                updatingId ===
+                                amenity.id
+                              }
+                              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3 py-2.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {updatingId ===
+                                amenity.id && (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              )}
+
+                              {amenity.availabilityStatus ===
+                              "AVAILABLE"
+                                ? "Mark unavailable"
+                                : "Mark available"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -610,112 +766,114 @@ export default function AmenitiesPage() {
         </section>
       </div>
 
-      {/* Create Amenity Dialog */}
-      <Dialog
-        open={createOpen}
-        onOpenChange={handleCreateDialogChange}
-      >
-        <DialogContent className="sm:max-w-md">
-          <form onSubmit={handleCreateAmenity}>
-            <DialogHeader>
-              <DialogTitle>
-                Create amenity
-              </DialogTitle>
+      {canManage && (
+        <Dialog
+          open={createOpen}
+          onOpenChange={handleCreateDialogChange}
+        >
+          <DialogContent className="sm:max-w-md">
+            <form onSubmit={handleCreateAmenity}>
+              <DialogHeader>
+                <DialogTitle>
+                  Create amenity
+                </DialogTitle>
 
-              <DialogDescription>
-                Add an amenity to an existing property.
-              </DialogDescription>
-            </DialogHeader>
+                <DialogDescription>
+                  Add an amenity to one of your existing
+                  properties.
+                </DialogDescription>
+              </DialogHeader>
 
-            <div className="space-y-5 py-4">
-              {formError && (
-                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="space-y-5 py-4">
+                {formError && (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 
-                  <p>{formError}</p>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label
-                  htmlFor="amenity-property-id"
-                  className="text-sm font-medium text-zinc-900"
-                >
-                  Property ID
-                </label>
-
-                <Input
-                  id="amenity-property-id"
-                  value={propertyId}
-                  onChange={(event) =>
-                    setPropertyId(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Enter property ID"
-                  disabled={createLoading}
-                  autoComplete="off"
-                />
-
-                <p className="text-xs leading-5 text-zinc-500">
-                  Enter the ID of an existing property.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label
-                  htmlFor="amenity-name"
-                  className="text-sm font-medium text-zinc-900"
-                >
-                  Amenity name
-                </label>
-
-                <Input
-                  id="amenity-name"
-                  value={name}
-                  onChange={(event) =>
-                    setName(event.target.value)
-                  }
-                  placeholder="e.g. Swimming Pool"
-                  disabled={createLoading}
-                  maxLength={100}
-                />
-
-                <p className="text-xs leading-5 text-zinc-500">
-                  Enter a name between 2 and 100
-                  characters.
-                </p>
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  handleCreateDialogChange(false)
-                }
-                disabled={createLoading}
-              >
-                Cancel
-              </Button>
-
-              <Button
-                type="submit"
-                disabled={createLoading}
-              >
-                {createLoading && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                    <p>{formError}</p>
+                  </div>
                 )}
 
-                {createLoading
-                  ? "Creating..."
-                  : "Create amenity"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+                <div className="space-y-2">
+                  <label
+                    htmlFor="amenity-property-id"
+                    className="text-sm font-medium text-zinc-900"
+                  >
+                    Property ID
+                  </label>
+
+                  <Input
+                    id="amenity-property-id"
+                    value={propertyId}
+                    onChange={(event) =>
+                      setPropertyId(
+                        event.target.value
+                      )
+                    }
+                    placeholder="Enter property ID"
+                    disabled={createLoading}
+                    autoComplete="off"
+                  />
+
+                  <p className="text-xs leading-5 text-zinc-500">
+                    Enter the ID of the property where
+                    this amenity belongs.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="amenity-name"
+                    className="text-sm font-medium text-zinc-900"
+                  >
+                    Amenity name
+                  </label>
+
+                  <Input
+                    id="amenity-name"
+                    value={name}
+                    onChange={(event) =>
+                      setName(event.target.value)
+                    }
+                    placeholder="e.g. Swimming Pool"
+                    disabled={createLoading}
+                    maxLength={100}
+                  />
+
+                  <p className="text-xs leading-5 text-zinc-500">
+                    Use between 2 and 100 characters.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    handleCreateDialogChange(false)
+                  }
+                  disabled={createLoading}
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  type="submit"
+                  disabled={createLoading}
+                >
+                  {createLoading && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+
+                  {createLoading
+                    ? "Creating..."
+                    : "Create amenity"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -819,10 +977,20 @@ function AvailabilityBadge({
   );
 }
 
+function formatRole(role: Role) {
+  return role.charAt(0) + role.slice(1).toLowerCase();
+}
+
 function formatDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(date);
 }

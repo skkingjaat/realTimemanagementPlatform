@@ -11,17 +11,11 @@ import {
   Clock3,
   Loader2,
   RefreshCw,
+  UserRound,
   Wrench,
 } from "lucide-react";
 
-type UserRole = "TENANT" | "OWNER" | "STAFF";
-
-type CurrentUser = {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-};
+type Role = "TENANT" | "OWNER" | "STAFF";
 
 type MaintenanceOverview = {
   totalRequests: number;
@@ -36,18 +30,37 @@ type AmenityUsageOverview = {
   checkedOutBookings: number;
 };
 
+type CurrentUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export default function DashboardPage() {
-  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [user, setUser] =
+    useState<CurrentUser | null>(null);
+
   const [maintenance, setMaintenance] =
     useState<MaintenanceOverview | null>(null);
+
   const [amenityUsage, setAmenityUsage] =
     useState<AmenityUsageOverview | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading] =
+    useState(true);
 
-  async function loadDashboard(showRefreshing = false) {
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  async function loadDashboard(
+    showRefreshing = false
+  ) {
     try {
       if (showRefreshing) {
         setRefreshing(true);
@@ -73,13 +86,22 @@ export default function DashboardPage() {
         }),
       ]);
 
-      const userResult = await userResponse.json();
-      const maintenanceResult = await maintenanceResponse.json();
-      const amenityResult = await amenityResponse.json();
+      const userResult =
+        await userResponse.json();
 
-      if (!userResponse.ok || !userResult.success) {
+      const maintenanceResult =
+        await maintenanceResponse.json();
+
+      const amenityResult =
+        await amenityResponse.json();
+
+      if (
+        !userResponse.ok ||
+        !userResult.success
+      ) {
         throw new Error(
-          userResult.message || "Authentication required."
+          userResult.message ||
+            "Authentication required."
         );
       }
 
@@ -93,7 +115,10 @@ export default function DashboardPage() {
         );
       }
 
-      if (!amenityResponse.ok || !amenityResult.success) {
+      if (
+        !amenityResponse.ok ||
+        !amenityResult.success
+      ) {
         throw new Error(
           amenityResult.message ||
             "Unable to load amenity overview."
@@ -101,8 +126,12 @@ export default function DashboardPage() {
       }
 
       setUser(userResult.data);
-      setMaintenance(maintenanceResult.data);
-      setAmenityUsage(amenityResult.data);
+      setMaintenance(
+        maintenanceResult.data
+      );
+      setAmenityUsage(
+        amenityResult.data
+      );
     } catch (error) {
       setError(
         error instanceof Error
@@ -119,34 +148,35 @@ export default function DashboardPage() {
     void loadDashboard();
   }, []);
 
-  const maintenanceCompletionRate = useMemo(() => {
-    if (!maintenance || maintenance.totalRequests === 0) {
-      return 0;
-    }
+  const maintenanceCompletionRate =
+    useMemo(() => {
+      if (
+        !maintenance ||
+        maintenance.totalRequests === 0
+      ) {
+        return 0;
+      }
 
-    return Math.round(
-      (maintenance.completedRequests /
-        maintenance.totalRequests) *
-        100
-    );
-  }, [maintenance]);
+      return Math.round(
+        (maintenance.completedRequests /
+          maintenance.totalRequests) *
+          100
+      );
+    }, [maintenance]);
 
   const activeMaintenance =
     (maintenance?.pendingRequests ?? 0) +
     (maintenance?.inProgressRequests ?? 0);
 
-  const firstName =
-    user?.name?.trim().split(/\s+/)[0] || "there";
-
-  const roleDescription = getRoleDescription(user?.role);
-
-  const quickActions = getQuickActions(user?.role);
+  const roleLabel = user
+    ? formatRole(user.role)
+    : "User";
 
   if (loading) {
     return (
       <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4">
         <div className="flex flex-col items-center text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-zinc-200 bg-white">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <Loader2 className="h-5 w-5 animate-spin text-zinc-700" />
           </div>
 
@@ -164,12 +194,12 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="px-4 py-6 sm:px-6 lg:px-8">
+      <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-950 text-white">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-950 text-white">
                   <RefreshCw className="h-5 w-5" />
                 </div>
 
@@ -177,20 +207,24 @@ export default function DashboardPage() {
                   Unable to load dashboard
                 </h1>
 
-                <p className="mt-1 max-w-xl text-sm text-zinc-500">
+                <p className="mt-1 max-w-xl text-sm leading-6 text-zinc-500">
                   {error}
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => void loadDashboard(true)}
+                onClick={() =>
+                  void loadDashboard(true)
+                }
                 disabled={refreshing}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RefreshCw
                   className={`h-4 w-4 ${
-                    refreshing ? "animate-spin" : ""
+                    refreshing
+                      ? "animate-spin"
+                      : ""
                   }`}
                 />
                 Try again
@@ -205,55 +239,63 @@ export default function DashboardPage() {
   return (
     <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-8">
-        {/* Welcome */}
+        {/* Header */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div>
+            <div className="min-w-0">
               <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600">
                 <span className="h-1.5 w-1.5 rounded-full bg-zinc-950" />
-                {user?.role || "Account"}
+                Property operations
               </div>
 
               <h1 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">
-                Welcome back, {firstName}.
+                Welcome back,{" "}
+                {user?.name || "User"}.
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 sm:text-base">
-                {roleDescription}
+                Monitor maintenance activity,
+                amenities, and bookings from
+                your centralized workspace.
               </p>
+
+              {user && (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700">
+                    <UserRound className="h-3.5 w-3.5" />
+                    {user.name}
+                  </div>
+
+                  <div className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    {roleLabel}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                  Signed in as
-                </p>
-
-                <p className="mt-0.5 text-sm font-semibold text-zinc-900">
-                  {user?.name}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => void loadDashboard(true)}
-                disabled={refreshing}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${
-                    refreshing ? "animate-spin" : ""
-                  }`}
-                />
-                Refresh
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() =>
+                void loadDashboard(true)
+              }
+              disabled={refreshing}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${
+                  refreshing
+                    ? "animate-spin"
+                    : ""
+                }`}
+              />
+              Refresh
+            </button>
           </div>
         </section>
 
         {/* Maintenance */}
         <section>
-          <div className="my-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                 Maintenance
@@ -276,35 +318,47 @@ export default function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard
               title="Total requests"
-              value={maintenance?.totalRequests ?? 0}
-              description="All accessible requests"
+              value={
+                maintenance?.totalRequests ??
+                0
+              }
+              description="Recorded requests"
               icon={ClipboardList}
             />
 
             <MetricCard
               title="Pending"
-              value={maintenance?.pendingRequests ?? 0}
+              value={
+                maintenance?.pendingRequests ??
+                0
+              }
               description="Waiting for action"
               icon={Clock3}
             />
 
             <MetricCard
               title="In progress"
-              value={maintenance?.inProgressRequests ?? 0}
+              value={
+                maintenance?.inProgressRequests ??
+                0
+              }
               description="Currently being handled"
               icon={Wrench}
             />
 
             <MetricCard
               title="Completed"
-              value={maintenance?.completedRequests ?? 0}
+              value={
+                maintenance?.completedRequests ??
+                0
+              }
               description="Successfully resolved"
               icon={CheckCircle2}
             />
           </div>
         </section>
 
-        {/* Progress + quick actions */}
+        {/* Maintenance progress + quick actions */}
         <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="flex items-start justify-between gap-4">
@@ -314,8 +368,8 @@ export default function DashboardPage() {
                 </p>
 
                 <p className="mt-1 text-sm text-zinc-500">
-                  Completion status across accessible maintenance
-                  requests.
+                  Current completion rate across
+                  available maintenance requests.
                 </p>
               </div>
 
@@ -332,22 +386,28 @@ export default function DashboardPage() {
 
             <div className="mt-6 h-2 overflow-hidden rounded-full bg-zinc-100">
               <div
-                className="h-full rounded-full bg-zinc-950 transition-all"
+                className="h-full rounded-full bg-zinc-950 transition-all duration-500"
                 style={{
                   width: `${maintenanceCompletionRate}%`,
                 }}
               />
             </div>
 
-            <div className="mt-5 grid gap-4 sm:grid-cols-3">
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <StatusSummary
                 label="Pending"
-                value={maintenance?.pendingRequests ?? 0}
+                value={
+                  maintenance?.pendingRequests ??
+                  0
+                }
               />
 
               <StatusSummary
                 label="In progress"
-                value={maintenance?.inProgressRequests ?? 0}
+                value={
+                  maintenance?.inProgressRequests ??
+                  0
+                }
               />
 
               <StatusSummary
@@ -357,28 +417,46 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-950 p-5 text-white shadow-sm sm:p-6">
+          <div className="rounded-2xl border border-zinc-950 bg-zinc-950 p-5 text-white shadow-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
               Quick actions
             </p>
 
             <h2 className="mt-2 text-lg font-semibold">
-              Your workspace
+              Manage your operations
             </h2>
 
             <p className="mt-2 text-sm leading-6 text-zinc-400">
-              Access the workflows available to your role.
+              Jump directly into the workflows
+              available to your account.
             </p>
 
             <div className="mt-6 grid gap-2">
-              {quickActions.map((action) => (
+              <QuickAction
+                href="/dashboard/maintenance"
+                icon={Wrench}
+                label="Manage maintenance"
+              />
+
+              <QuickAction
+                href="/dashboard/amenities"
+                icon={Building2}
+                label="View amenities"
+              />
+
+              <QuickAction
+                href="/dashboard/bookings"
+                icon={CalendarDays}
+                label="Manage bookings"
+              />
+
+              {user?.role === "OWNER" && (
                 <QuickAction
-                  key={action.href}
-                  href={action.href}
-                  icon={action.icon}
-                  label={action.label}
+                  href="/dashboard/properties"
+                  icon={Building2}
+                  label="Manage properties"
                 />
-              ))}
+              )}
             </div>
           </div>
         </section>
@@ -408,52 +486,67 @@ export default function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <MetricCard
               title="Total bookings"
-              value={amenityUsage?.totalBookings ?? 0}
-              description="Accessible amenity bookings"
+              value={
+                amenityUsage?.totalBookings ??
+                0
+              }
+              description="Available booking records"
               icon={CalendarDays}
             />
 
             <MetricCard
               title="Checked in"
-              value={amenityUsage?.checkedInBookings ?? 0}
-              description="Recorded check-ins"
+              value={
+                amenityUsage?.checkedInBookings ??
+                0
+              }
+              description="Active amenity visits"
               icon={CheckCircle2}
             />
 
             <MetricCard
               title="Checked out"
-              value={amenityUsage?.checkedOutBookings ?? 0}
+              value={
+                amenityUsage?.checkedOutBookings ??
+                0
+              }
               description="Completed amenity visits"
               icon={ClipboardList}
             />
           </div>
         </section>
 
-        {/* Summary */}
+        {/* Account summary */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-4">
+            <div className="flex min-w-0 items-start gap-4">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-100">
-                <Building2 className="h-5 w-5 text-zinc-700" />
+                <UserRound className="h-5 w-5 text-zinc-700" />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <h2 className="text-sm font-semibold text-zinc-950">
-                  Centralized property operations
+                  Account overview
                 </h2>
 
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-500">
-                  Keep maintenance requests and amenity activity
-                  visible from one responsive workspace.
+                <p className="mt-1 truncate text-sm text-zinc-500">
+                  {user?.email}
+                </p>
+
+                <p className="mt-1 text-xs text-zinc-400">
+                  Signed in as{" "}
+                  <span className="font-medium text-zinc-600">
+                    {roleLabel}
+                  </span>
                 </p>
               </div>
             </div>
 
             <Link
-              href="/dashboard/maintenance"
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800"
+              href="/dashboard/settings"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-zinc-200 px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
             >
-              Open workspace
+              Account settings
               <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -461,57 +554,6 @@ export default function DashboardPage() {
       </div>
     </div>
   );
-}
-
-function getRoleDescription(role?: UserRole) {
-  switch (role) {
-    case "OWNER":
-      return "Monitor your property operations, maintenance activity, amenities, and bookings from one centralized workspace.";
-
-    case "STAFF":
-      return "Manage maintenance workflows and monitor amenity activity from one centralized workspace.";
-
-    case "TENANT":
-      return "Track maintenance activity and manage your amenity bookings from one centralized workspace.";
-
-    default:
-      return "Monitor maintenance activity and amenity usage from one centralized workspace.";
-  }
-}
-
-function getQuickActions(role?: UserRole) {
-  const actions: Array<{
-    href: string;
-    icon: typeof Wrench;
-    label: string;
-  }> = [
-    {
-      href: "/dashboard/maintenance",
-      icon: Wrench,
-      label: "Manage maintenance",
-    },
-    {
-      href: "/dashboard/amenities",
-      icon: CalendarDays,
-      label: "View amenities",
-    },
-  ];
-
-  if (role === "OWNER") {
-    actions.push({
-      href: "/dashboard/properties",
-      icon: Building2,
-      label: "Manage properties",
-    });
-  }
-
-  actions.push({
-    href: "/dashboard/bookings",
-    icon: ClipboardList,
-    label: "View bookings",
-  });
-
-  return actions;
 }
 
 function MetricCard({
@@ -529,11 +571,11 @@ function MetricCard({
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-start justify-between gap-4">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-100">
-          <Icon className="h-4.5 w-4.5 text-zinc-700" />
+          <Icon className="h-[18px] w-[18px] text-zinc-700" />
         </div>
 
         <span className="text-xs font-medium text-zinc-400">
-          Live
+          Current
         </span>
       </div>
 
@@ -593,5 +635,12 @@ function QuickAction({
 
       <ArrowRight className="h-4 w-4 text-zinc-500 transition group-hover:translate-x-0.5 group-hover:text-white" />
     </Link>
+  );
+}
+
+function formatRole(role: Role) {
+  return (
+    role.charAt(0) +
+    role.slice(1).toLowerCase()
   );
 }

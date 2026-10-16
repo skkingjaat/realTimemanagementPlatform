@@ -1,5 +1,3 @@
-// File: src/app/api/amenities/route.ts
-
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
@@ -9,6 +7,46 @@ import {
   createAmenity,
   getAmenities,
 } from "@/services/amenity.service";
+
+export async function GET() {
+  try {
+    const currentUser = await getCurrentUser();
+
+    if (!currentUser) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const amenities = await getAmenities(
+      currentUser.role,
+      currentUser.id
+    );
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Amenities retrieved successfully.",
+        data: amenities,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Get amenities error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Unable to retrieve amenities.",
+      },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -64,7 +102,7 @@ export async function POST(request: Request) {
         {
           success: false,
           message:
-            "You do not have permission to add an amenity to this property.",
+            "You can only add amenities to your own properties.",
         },
         { status: 403 }
       );
@@ -90,49 +128,15 @@ export async function POST(request: Request) {
       );
     }
 
-    console.error("Create amenity error:", error);
+    console.error(
+      "Create amenity error:",
+      error
+    );
 
     return NextResponse.json(
       {
         success: false,
         message: "Unable to create amenity.",
-      },
-      { status: 500 }
-    );
-  }
-}
-
-export async function GET() {
-  try {
-    const currentUser = await getCurrentUser();
-
-    if (!currentUser) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Authentication required.",
-        },
-        { status: 401 }
-      );
-    }
-
-    const amenities = await getAmenities();
-
-    return NextResponse.json(
-      {
-        success: true,
-        message: "Amenities retrieved successfully.",
-        data: amenities,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error("Get amenities error:", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Unable to retrieve amenities.",
       },
       { status: 500 }
     );

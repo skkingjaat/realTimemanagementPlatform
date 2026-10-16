@@ -1,5 +1,3 @@
-// File: src/app/dashboard/properties/page.tsx
-
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -27,6 +25,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
+type UserRole = "TENANT" | "OWNER" | "STAFF";
+
+type CurrentUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+};
+
 type Property = {
   id: string;
   name: string;
@@ -44,21 +51,24 @@ type Feedback = {
 } | null;
 
 export default function PropertiesPage() {
+  const [currentUser, setCurrentUser] =
+    useState<CurrentUser | null>(null);
+
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
   const [search, setSearch] = useState("");
 
   const [formOpen, setFormOpen] = useState(false);
-  const [formMode, setFormMode] = useState<FormMode>("create");
-
+  const [formMode, setFormMode] =
+    useState<FormMode>("create");
   const [selectedProperty, setSelectedProperty] =
     useState<Property | null>(null);
 
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
-
   const [saving, setSaving] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -66,10 +76,8 @@ export default function PropertiesPage() {
     useState<Property | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const [error, setError] = useState("");
-  const [feedback, setFeedback] = useState<Feedback>(null);
-
-  // File: src/app/dashboard/properties/page.tsx
+  const [feedback, setFeedback] =
+    useState<Feedback>(null);
 
   async function loadProperties(showRefreshing = false) {
     try {
@@ -81,19 +89,44 @@ export default function PropertiesPage() {
 
       setError("");
 
-      const response = await fetch("/api/properties", {
-        cache: "no-store",
-      });
+      const [userResponse, propertiesResponse] =
+        await Promise.all([
+          fetch("/api/auth/me", {
+            cache: "no-store",
+          }),
+          fetch("/api/properties", {
+            cache: "no-store",
+          }),
+        ]);
 
-      const result = await response.json();
+      const userResult = await userResponse.json();
+      const propertiesResult =
+        await propertiesResponse.json();
 
-      if (!response.ok || !result.success) {
+      if (!userResponse.ok || !userResult.success) {
         throw new Error(
-          result.message || "Unable to load properties."
+          userResult.message || "Authentication required."
         );
       }
 
-      setProperties(result.data);
+      if (userResult.data.role !== "OWNER") {
+        setCurrentUser(userResult.data);
+        setProperties([]);
+        return;
+      }
+
+      if (
+        !propertiesResponse.ok ||
+        !propertiesResult.success
+      ) {
+        throw new Error(
+          propertiesResult.message ||
+            "Unable to load properties."
+        );
+      }
+
+      setCurrentUser(userResult.data);
+      setProperties(propertiesResult.data);
     } catch (error) {
       setError(
         error instanceof Error
@@ -107,49 +140,7 @@ export default function PropertiesPage() {
   }
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadInitialProperties() {
-      try {
-        const response = await fetch("/api/properties", {
-          cache: "no-store",
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          throw new Error(
-            result.message || "Unable to load properties."
-          );
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        setProperties(result.data);
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        setError(
-          error instanceof Error
-            ? error.message
-            : "Unable to load properties."
-        );
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadInitialProperties();
-
-    return () => {
-      cancelled = true;
-    };
+    void loadProperties();
   }, []);
 
   const filteredProperties = useMemo(() => {
@@ -171,11 +162,15 @@ export default function PropertiesPage() {
     });
   }, [properties, search]);
 
-  function openCreateDialog() {
-    setFormMode("create");
-    setSelectedProperty(null);
+  function resetForm() {
     setName("");
     setAddress("");
+    setSelectedProperty(null);
+  }
+
+  function openCreateDialog() {
+    resetForm();
+    setFormMode("create");
     setFeedback(null);
     setFormOpen(true);
   }
@@ -195,16 +190,18 @@ export default function PropertiesPage() {
     setDeleteOpen(true);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     setSaving(true);
     setFeedback(null);
 
-    try {
-      const isEditing =
-        formMode === "edit" && selectedProperty;
+    const isEditing =
+      formMode === "edit" && selectedProperty;
 
+    try {
       const response = await fetch(
         isEditing
           ? `/api/properties/${selectedProperty.id}`
@@ -241,16 +238,16 @@ export default function PropertiesPage() {
       }
 
       setFormOpen(false);
+      resetForm();
 
       setFeedback({
         type: "success",
-        message:
-          formMode === "edit"
-            ? "Property updated successfully."
-            : "Property created successfully.",
+        message: isEditing
+          ? "Property updated successfully."
+          : "Property created successfully.",
       });
 
-      await loadProperties();
+      await loadProperties(true);
     } catch (error) {
       setFeedback({
         type: "error",
@@ -296,7 +293,7 @@ export default function PropertiesPage() {
         message: "Property deleted successfully.",
       });
 
-      await loadProperties();
+      await loadProperties(true);
     } catch (error) {
       setFeedback({
         type: "error",
@@ -330,10 +327,37 @@ export default function PropertiesPage() {
     );
   }
 
+  if (currentUser?.role !== "OWNER") {
+    return (
+      <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <div className="mx-auto max-w-3xl">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100">
+              <Building2 className="h-6 w-6 text-zinc-600" />
+            </div>
+
+            <h1 className="mt-5 text-xl font-semibold tracking-tight text-zinc-950">
+              Property management is owner-only
+            </h1>
+
+            <p className="mt-2 text-sm leading-6 text-zinc-500">
+              Your current role does not have permission to
+              create, update, or delete properties.
+            </p>
+
+            <p className="mt-4 text-xs font-medium uppercase tracking-wide text-zinc-400">
+              Signed in as {currentUser?.name} ·{" "}
+              {currentUser?.role}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        {/* Header */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-7">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -350,6 +374,10 @@ export default function PropertiesPage() {
                 Manage the properties connected to your
                 account from one centralized workspace.
               </p>
+
+              <p className="mt-3 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                {currentUser.name} · Owner
+              </p>
             </div>
 
             <button
@@ -363,7 +391,6 @@ export default function PropertiesPage() {
           </div>
         </section>
 
-        {/* Feedback */}
         {feedback && (
           <div
             role="status"
@@ -385,7 +412,6 @@ export default function PropertiesPage() {
           </div>
         )}
 
-        {/* Summary */}
         <section className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
@@ -405,7 +431,7 @@ export default function PropertiesPage() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-950 p-5 text-white shadow-sm">
+          <div className="rounded-2xl border border-zinc-950 bg-zinc-950 p-5 text-white shadow-sm">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-zinc-400">
                 Workspace
@@ -425,7 +451,6 @@ export default function PropertiesPage() {
           </div>
         </section>
 
-        {/* Toolbar */}
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
@@ -457,24 +482,19 @@ export default function PropertiesPage() {
           </div>
         </section>
 
-        {/* Properties */}
         <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm">
           <div className="border-b border-zinc-200 px-5 py-4 sm:px-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-sm font-semibold text-zinc-950">
-                  Your properties
-                </h2>
+            <h2 className="text-sm font-semibold text-zinc-950">
+              Your properties
+            </h2>
 
-                <p className="mt-1 text-xs text-zinc-500">
-                  {filteredProperties.length}{" "}
-                  {filteredProperties.length === 1
-                    ? "property"
-                    : "properties"}{" "}
-                  displayed
-                </p>
-              </div>
-            </div>
+            <p className="mt-1 text-xs text-zinc-500">
+              {filteredProperties.length}{" "}
+              {filteredProperties.length === 1
+                ? "property"
+                : "properties"}{" "}
+              displayed
+            </p>
           </div>
 
           {error ? (
@@ -535,7 +555,6 @@ export default function PropertiesPage() {
             </div>
           ) : (
             <>
-              {/* Desktop table */}
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full text-left">
                   <thead>
@@ -576,8 +595,7 @@ export default function PropertiesPage() {
                               </p>
 
                               <p className="mt-0.5 text-xs text-zinc-400">
-                                Property ID:{" "}
-                                {property.id}
+                                Property ID: {property.id}
                               </p>
                             </div>
                           </div>
@@ -628,13 +646,9 @@ export default function PropertiesPage() {
                 </table>
               </div>
 
-              {/* Mobile cards */}
               <div className="divide-y divide-zinc-100 md:hidden">
                 {filteredProperties.map((property) => (
-                  <div
-                    key={property.id}
-                    className="p-5"
-                  >
+                  <div key={property.id} className="p-5">
                     <div className="flex items-start gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100">
                         <Building2 className="h-4 w-4 text-zinc-600" />
@@ -690,7 +704,6 @@ export default function PropertiesPage() {
         </section>
       </div>
 
-      {/* Create / Edit dialog */}
       <Dialog
         open={formOpen}
         onOpenChange={(open) => {
@@ -736,12 +749,7 @@ export default function PropertiesPage() {
                 maxLength={100}
                 disabled={saving}
                 required
-                className="h-10"
               />
-
-              <p className="text-xs text-zinc-400">
-                {name.length}/100 characters
-              </p>
             </div>
 
             <div className="space-y-2">
@@ -765,10 +773,6 @@ export default function PropertiesPage() {
                 rows={4}
                 className="w-full resize-none rounded-lg border border-input bg-transparent px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
               />
-
-              <p className="text-xs text-zinc-400">
-                {address.length}/255 characters
-              </p>
             </div>
 
             {feedback?.type === "error" && (
@@ -818,7 +822,6 @@ export default function PropertiesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirmation */}
       <Dialog
         open={deleteOpen}
         onOpenChange={(open) => {

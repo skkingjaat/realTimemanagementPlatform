@@ -1,9 +1,8 @@
-// File: src/services/amenity.service.ts
-
 import { prisma } from "@/lib/prisma";
 
 import type {
   CreateAmenityInput,
+  UpdateAmenityInput,
 } from "@/lib/validations/amenity";
 
 export type AmenityUserRole =
@@ -54,8 +53,21 @@ export async function createAmenity(
   };
 }
 
-export async function getAmenities() {
+export async function getAmenities(
+  role: AmenityUserRole,
+  userId: string
+) {
+  const where =
+    role === "OWNER"
+      ? {
+          property: {
+            ownerId: userId,
+          },
+        }
+      : {};
+
   return prisma.amenity.findMany({
+    where,
     orderBy: {
       createdAt: "desc",
     },
@@ -71,12 +83,24 @@ export async function getAmenities() {
 }
 
 export async function getAmenityById(
-  amenityId: string
+  amenityId: string,
+  role: AmenityUserRole,
+  userId: string
 ) {
-  return prisma.amenity.findUnique({
-    where: {
-      id: amenityId,
-    },
+  const where =
+    role === "OWNER"
+      ? {
+          id: amenityId,
+          property: {
+            ownerId: userId,
+          },
+        }
+      : {
+          id: amenityId,
+        };
+
+  return prisma.amenity.findFirst({
+    where,
     include: {
       property: {
         select: {
@@ -86,4 +110,61 @@ export async function getAmenityById(
       },
     },
   });
+}
+
+export async function updateAmenity(
+  amenityId: string,
+  input: UpdateAmenityInput,
+  role: "OWNER" | "STAFF",
+  userId: string
+) {
+  const where =
+    role === "OWNER"
+      ? {
+          id: amenityId,
+          property: {
+            ownerId: userId,
+          },
+        }
+      : {
+          id: amenityId,
+        };
+
+  const amenity = await prisma.amenity.findFirst({
+    where,
+    select: {
+      id: true,
+    },
+  });
+
+  if (!amenity) {
+    return {
+      type: "NOT_FOUND" as const,
+    };
+  }
+
+  const updatedAmenity =
+    await prisma.amenity.update({
+      where: {
+        id: amenity.id,
+      },
+      data: {
+        ...(input.name !== undefined
+          ? {
+              name: input.name,
+            }
+          : {}),
+        ...(input.availabilityStatus !== undefined
+          ? {
+              availabilityStatus:
+                input.availabilityStatus,
+            }
+          : {}),
+      },
+    });
+
+  return {
+    type: "SUCCESS" as const,
+    data: updatedAmenity,
+  };
 }

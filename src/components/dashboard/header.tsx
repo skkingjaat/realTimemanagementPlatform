@@ -1,49 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { LogOut, Menu } from "lucide-react";
+import { ChevronDown, LogOut, Menu } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-type CurrentUser = {
-  id: string;
-  name: string;
-  email: string;
-  role: "TENANT" | "OWNER" | "STAFF";
-};
+import type { DashboardUser } from "@/app/dashboard/layout";
 
 type HeaderProps = {
+  user: DashboardUser | null;
   onMenuClick?: () => void;
 };
 
-export function Header({ onMenuClick }: HeaderProps) {
+export function Header({
+  user,
+  onMenuClick,
+}: HeaderProps) {
   const router = useRouter();
-  const [user, setUser] = useState<CurrentUser | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadUser() {
-      try {
-        const response = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
-
-        const result = await response.json();
-
-        if (!cancelled && response.ok && result.success) {
-          setUser(result.data);
-        }
-      } catch {
-        // The dashboard itself handles authentication failures.
-      }
-    }
-
-    void loadUser();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   async function handleLogout() {
     try {
@@ -56,9 +27,17 @@ export function Header({ onMenuClick }: HeaderProps) {
     }
   }
 
-  const displayName = user?.name || "User";
-  const roleLabel = user?.role || "Account";
-  const initial = displayName.trim().charAt(0).toUpperCase() || "U";
+  const displayName = user?.name ?? "User";
+  const displayRole = user?.role ?? "Account";
+
+  const initials =
+    displayName
+      .trim()
+      .split(/\s+/)
+      .map((part) => part.charAt(0))
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "U";
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-zinc-200 bg-white/95 px-4 backdrop-blur sm:px-6 lg:px-8">
@@ -84,22 +63,6 @@ export function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
-        <div className="hidden text-right sm:block">
-          <p className="max-w-32 truncate text-sm font-medium text-zinc-950">
-            {displayName}
-          </p>
-
-          <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-            {roleLabel}
-          </p>
-        </div>
-
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-950 text-xs font-semibold text-white">
-          {initial}
-        </div>
-
-        <div className="hidden h-6 w-px bg-zinc-200 sm:block" />
-
         <button
           type="button"
           onClick={handleLogout}
@@ -107,7 +70,35 @@ export function Header({ onMenuClick }: HeaderProps) {
           className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-950"
         >
           <LogOut className="h-4 w-4" />
-          <span className="hidden sm:inline">Logout</span>
+
+          <span className="hidden sm:inline">
+            Logout
+          </span>
+        </button>
+
+        <div className="hidden h-6 w-px bg-zinc-200 sm:block" />
+
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/settings")}
+          className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-zinc-100"
+          aria-label="Open account settings"
+        >
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-950 text-xs font-semibold text-white">
+            {initials}
+          </div>
+
+          <div className="hidden text-left md:block">
+            <p className="max-w-32 truncate text-sm font-medium text-zinc-950">
+              {displayName}
+            </p>
+
+            <p className="text-xs capitalize text-zinc-500">
+              {displayRole.toLowerCase()}
+            </p>
+          </div>
+
+          <ChevronDown className="hidden h-4 w-4 text-zinc-400 md:block" />
         </button>
       </div>
     </header>

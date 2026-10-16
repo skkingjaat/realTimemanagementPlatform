@@ -7,22 +7,21 @@ import {
   CalendarDays,
   ClipboardList,
   Home,
+  Settings,
   Wrench,
 } from "lucide-react";
-import { useEffect, useState } from "react";
 
-type UserRole = "TENANT" | "OWNER" | "STAFF";
+import type { DashboardUser } from "@/app/dashboard/layout";
 
-type CurrentUser = {
-  name: string;
-  role: UserRole;
+type SidebarProps = {
+  user: DashboardUser | null;
 };
 
 type NavigationItem = {
   label: string;
   href: string;
   icon: typeof Home;
-  roles: UserRole[];
+  roles: DashboardUser["role"][];
 };
 
 const navigationItems: NavigationItem[] = [
@@ -58,44 +57,20 @@ const navigationItems: NavigationItem[] = [
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
-  const [user, setUser] = useState<CurrentUser | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadUser() {
-      try {
-        const response = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
-
-        const result = await response.json();
-
-        if (!cancelled && response.ok && result.success) {
-          setUser(result.data);
-        }
-      } catch {
-        // Authentication is handled by the protected APIs.
-      }
-    }
-
-    void loadUser();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const visibleItems = navigationItems.filter((item) =>
+  const visibleNavigationItems = navigationItems.filter((item) =>
     user ? item.roles.includes(user.role) : true
   );
 
   return (
     <aside className="hidden h-screen w-64 shrink-0 border-r border-zinc-200 bg-white lg:flex lg:flex-col">
       <div className="flex h-20 items-center border-b border-zinc-200 px-6">
-        <Link href="/dashboard" className="flex items-center gap-3">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-3"
+        >
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-950 text-white">
             <Building2 className="h-5 w-5" />
           </div>
@@ -117,7 +92,7 @@ export function Sidebar() {
           Workspace
         </p>
 
-        {visibleItems.map((item) => {
+        {visibleNavigationItems.map((item) => {
           const Icon = item.icon;
 
           const isActive =
@@ -149,16 +124,25 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-zinc-200 px-5 py-4">
-        <div className="rounded-xl bg-zinc-50 px-3 py-3">
-          <p className="truncate text-sm font-semibold text-zinc-950">
-            {user?.name || "Loading..."}
-          </p>
+      <div className="border-t border-zinc-200 p-3">
+        <Link
+          href="/dashboard/settings"
+          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+            pathname.startsWith("/dashboard/settings")
+              ? "bg-zinc-950 text-white"
+              : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950"
+          }`}
+        >
+          <Settings
+            className={`h-4.5 w-4.5 ${
+              pathname.startsWith("/dashboard/settings")
+                ? "text-white"
+                : "text-zinc-500"
+            }`}
+          />
 
-          <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
-            {user?.role || "Account"}
-          </p>
-        </div>
+          <span>Settings</span>
+        </Link>
       </div>
     </aside>
   );
